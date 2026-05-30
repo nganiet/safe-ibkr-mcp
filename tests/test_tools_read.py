@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from ibkr_mcp.core.models import AccountInfo, BrokerHealth
+from ibkr_mcp.core.models import BrokerHealth
 from ibkr_mcp.mcp import tools_read
 
 
