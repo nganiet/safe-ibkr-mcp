@@ -1,0 +1,23 @@
+"""Guard the extractable-core invariant: ibkr_mcp/core/ never imports mcp or fastmcp."""
+
+import pathlib
+
+CORE_DIR = pathlib.Path(__file__).resolve().parent.parent / "ibkr_mcp" / "core"
+
+
+def test_core_never_imports_mcp_or_fastmcp():
+    offenders = []
+    for py in CORE_DIR.rglob("*.py"):
+        text = py.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            stripped = line.strip()
+            if not (stripped.startswith("import ") or stripped.startswith("from ")):
+                continue
+            # Allow our own package; forbid the MCP SDK / FastMCP.
+            if (
+                "fastmcp" in stripped
+                or stripped.startswith("import mcp")
+                or stripped.startswith("from mcp")
+            ):
+                offenders.append(f"{py.name}:{lineno}: {stripped}")
+    assert not offenders, "core/ must not depend on MCP layer:\n" + "\n".join(offenders)
