@@ -31,6 +31,10 @@ def test_is_paper_for_paper_ports():
     assert conn.is_paper is True
     conn2, _ = _make(port=4001)
     assert conn2.is_paper is False
+    conn3, _ = _make(port=7497)
+    assert conn3.is_paper is True
+    conn4, _ = _make(port=7496)
+    assert conn4.is_paper is False
 
 
 async def test_health_reflects_connection_state():
@@ -39,7 +43,7 @@ async def test_health_reflects_connection_state():
     assert h.connected is False
     assert h.last_heartbeat_at is None
 
-    fake._connected = True
+    await conn.ensure_connected()
     h2 = await conn.health()
     assert h2.connected is True
     assert h2.last_heartbeat_at is not None
@@ -55,5 +59,13 @@ async def test_ensure_connected_connects_once():
 
 def test_disconnect_is_safe_when_not_connected():
     conn, fake = _make()
+    conn.disconnect()
+    assert fake.isConnected() is False
+
+
+async def test_disconnect_closes_a_live_connection():
+    conn, fake = _make()
+    await conn.ensure_connected()
+    assert fake.isConnected() is True
     conn.disconnect()
     assert fake.isConnected() is False

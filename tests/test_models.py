@@ -29,3 +29,5 @@ def test_account_info_fields():
     assert a.total_value == 100_000.0
     assert a.buying_power == 200_000.0
     assert a.unrealized_pnl == 1_234.5
+    assert a.cash == 50_000.0
+    assert a.positions_value == 50_000.0

@@ -33,6 +33,8 @@ class IBKRConnection:
         self.readonly = readonly
         self._ib = ib_factory()
 
+    # Internal accessor for core READS (e.g. account/positions). Not a write path:
+    # order placement will go through guarded methods, not this raw IB handle.
     @property
     def ib(self) -> "ib_async.IB":
         return self._ib
@@ -50,6 +52,10 @@ class IBKRConnection:
 
     async def health(self) -> BrokerHealth:
         connected = self._ib.isConnected()
+        # M1: no Gateway heartbeat subscription yet. While connected we stamp
+        # last_heartbeat_at with the poll time (not a true broker heartbeat);
+        # real heartbeat tracking arrives with the Watchdog in a later milestone.
+        # Field name kept aligned with the Aegis BrokerHealth shape on purpose.
         return BrokerHealth(
             connected=connected,
             last_heartbeat_at=datetime.now(timezone.utc) if connected else None,
