@@ -20,9 +20,7 @@ class _FakeIB:
 
 def _make(port=4002, readonly=True):
     fake = _FakeIB()
-    conn = IBKRConnection(
-        "127.0.0.1", port, 1, readonly=readonly, ib_factory=lambda: fake
-    )
+    conn = IBKRConnection("127.0.0.1", port, 1, readonly=readonly, ib_factory=lambda: fake)
     return conn, fake
 
 

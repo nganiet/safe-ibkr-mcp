@@ -5,6 +5,7 @@ from ibkr_mcp.mcp.server import build_server
 
 class _FakeConn:
     is_paper = True
+    ib = None
 
     async def ensure_connected(self):
         pass

@@ -8,7 +8,11 @@ from ibkr_mcp.mcp.server import build_server
 def main() -> None:
     config = Config.from_env()
     conn = IBKRConnection(
-        config.host, config.port, config.client_id, readonly=config.read_only
+        # ib_async uses the kwarg 'readonly' (one word); our Config uses 'read_only'.
+        config.host,
+        config.port,
+        config.client_id,
+        readonly=config.read_only,
     )
     app = build_server(conn)
     try:

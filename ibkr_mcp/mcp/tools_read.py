@@ -12,9 +12,7 @@ async def health(conn: IBKRConnection) -> dict:
     return {
         "connected": h.connected,
         "is_paper": conn.is_paper,
-        "last_heartbeat_at": (
-            h.last_heartbeat_at.isoformat() if h.last_heartbeat_at else None
-        ),
+        "last_heartbeat_at": (h.last_heartbeat_at.isoformat() if h.last_heartbeat_at else None),
     }
 
 

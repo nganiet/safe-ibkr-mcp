@@ -36,6 +36,8 @@ async def test_health_tool_shape():
     assert out["connected"] is True
     assert out["is_paper"] is True
     assert out["last_heartbeat_at"] is not None
+    assert isinstance(out["last_heartbeat_at"], str)
+    assert out["last_heartbeat_at"].endswith("+00:00")  # ISO 8601, tz-aware
 
 
 async def test_health_tool_disconnected():
@@ -51,3 +53,5 @@ async def test_account_summary_tool_ensures_connection_and_maps():
     assert out["total_value"] == 100000.0
     assert out["cash"] == 40000.0
     assert out["buying_power"] == 0.0
+    assert out["positions_value"] == 0.0
+    assert out["unrealized_pnl"] == 0.0
