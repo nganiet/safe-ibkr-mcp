@@ -24,6 +24,17 @@ def test_core_never_imports_mcp_or_fastmcp():
     assert not offenders, "core/ must not depend on MCP layer:\n" + "\n".join(offenders)
 
 
+SAFETY_DIR = pathlib.Path(__file__).resolve().parent.parent / "ibkr_mcp" / "core" / "safety"
+
+
+def test_safety_modules_exist_and_are_scanned():
+    # The recursive core/ guard above must actually cover the safety primitives.
+    safety_files = {p.name for p in SAFETY_DIR.glob("*.py")}
+    assert {"killswitch.py", "guardrails.py", "idempotency.py"} <= safety_files
+    # And they live under CORE_DIR (so the mcp/fastmcp guard applies to them).
+    assert SAFETY_DIR.is_relative_to(CORE_DIR)
+
+
 def test_mcp_layer_never_imports_ib_async_directly():
     offenders = []
     for py in MCP_DIR.rglob("*.py"):
