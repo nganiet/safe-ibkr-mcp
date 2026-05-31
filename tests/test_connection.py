@@ -1,4 +1,7 @@
+import pytest
+
 from ibkr_mcp.core.connection import IBKRConnection
+from ibkr_mcp.core.errors import BrokerUnavailable
 
 
 class _FakeIB:
@@ -67,11 +70,6 @@ async def test_disconnect_closes_a_live_connection():
     assert fake.isConnected() is True
     conn.disconnect()
     assert fake.isConnected() is False
-
-
-import pytest
-
-from ibkr_mcp.core.errors import BrokerUnavailable
 
 
 class _RefusingIB:
