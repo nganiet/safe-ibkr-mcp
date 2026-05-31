@@ -41,7 +41,7 @@ def build_server(conn: IBKRConnection) -> FastMCP:
 
     @app.tool()
     async def get_order_status(order_id: str) -> dict:
-        """Status of a single order by IBKR order id or perm id."""
+        """Status of a single OPEN order by IBKR order id or perm id. Completed (filled/cancelled) orders are not returned here — use get_executions for fills."""
         return await tools_read.order_status(conn, order_id)
 
     @app.tool()

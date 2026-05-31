@@ -26,6 +26,8 @@ from ibkr_mcp.core.orders import (
         ("Cancelled", 0, 0, OrderStatus.CANCELLED),
         ("ApiCancelled", 0, 0, OrderStatus.CANCELLED),
         ("Inactive", 0, 0, OrderStatus.REJECTED),
+        ("ApiPending", 0, 100, OrderStatus.PENDING),
+        ("PendingCancel", 0, 100, OrderStatus.SUBMITTED),
     ],
 )
 def test_map_ib_status(ib_status, filled, remaining, expected):
@@ -138,3 +140,19 @@ async def test_get_executions_filters_by_since():
     assert out[0].filled_quantity == Decimal("5")
     assert out[0].fill_price == 151.0
     assert out[0].status == OrderStatus.FILLED
+
+
+async def test_get_executions_handles_naive_fill_time():
+    naive = datetime(2026, 5, 31, 12, 0)  # tz-naive (as real TWS may return)
+    ib = _OrdersIB([], fills=[_Fill("AAPL", "e3", naive, "BOT", 3, 10.0, 1.0, 0.0)])
+    out = await get_executions(ib, since=datetime(2026, 5, 31, tzinfo=timezone.utc))
+    assert [u.order_id for u in out] == ["e3"]
+    assert out[0].timestamp.tzinfo is not None
+
+
+async def test_get_open_orders_handles_empty_log():
+    t = _Trade(7, 900, "Submitted", 0, 100, 0.0, _TS)
+    t.log = []
+    out = await get_open_orders(_OrdersIB([t]))
+    assert out[0].order_id == "7"
+    assert out[0].timestamp is not None

@@ -72,26 +72,21 @@ class _ReadsConn:
         return self._ib
 
 
+class _FakePos:
+    def __init__(self, symbol, position, avg_cost):
+        self.contract = type("C", (), {"symbol": symbol})()
+        self.position = position
+        self.avgCost = avg_cost
+
+
+class _PosIB:
+    def positions(self):
+        return [_FakePos("AAPL", 10, 150.0)]
+
+
 async def test_positions_tool():
     conn = _ReadsConn()
-    # patch core call via the connection's ib + monkeypatch-free: use a fake that tools call
-    conn._ib = type(
-        "IB",
-        (),
-        {
-            "positions": lambda self: [
-                type(
-                    "P",
-                    (),
-                    {
-                        "contract": type("C", (), {"symbol": "AAPL"})(),
-                        "position": 10,
-                        "avgCost": 150.0,
-                    },
-                )()
-            ]
-        },
-    )()
+    conn._ib = _PosIB()
     out = await tools_read.positions(conn)
     assert conn.ensured is True
     assert out[0]["ticker"] == "AAPL"
@@ -152,3 +147,17 @@ async def test_executions_tool(monkeypatch):
     out = await tools_read.executions(conn, since_iso="2026-05-31T00:00:00+00:00")
     assert out[0]["order_id"] == "e1"
     assert out[0]["filled_quantity"] == "5"
+
+
+async def test_executions_tool_normalizes_naive_since(monkeypatch):
+    conn = _ReadsConn()
+    captured = {}
+
+    async def fake_execs(ib, since):
+        captured["since"] = since
+        return []
+
+    monkeypatch.setattr(tools_read, "get_executions", fake_execs)
+    conn._ib = object()
+    await tools_read.executions(conn, since_iso="2026-05-31T00:00:00")  # naive ISO
+    assert captured["since"].tzinfo is not None

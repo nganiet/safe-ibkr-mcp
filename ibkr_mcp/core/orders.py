@@ -2,12 +2,12 @@
 never mcp/FastMCP. Write operations (place/cancel/modify) are M4.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from ibkr_mcp.core.models import OrderStatus, OrderUpdate
 
-_PENDING = {"PendingSubmit", "ApiPending", "PreSubmitted", "PendingCancel"}
+_PENDING = {"PendingSubmit", "ApiPending", "PreSubmitted"}
 _CANCELLED = {"Cancelled", "ApiCancelled"}
 
 
@@ -33,7 +33,7 @@ def _trade_to_update(t) -> OrderUpdate:
         status=map_ib_status(st.status, st.filled, st.remaining),
         filled_quantity=Decimal(str(st.filled)),
         fill_price=float(st.avgFillPrice) if st.avgFillPrice else None,
-        timestamp=t.log[-1].time,
+        timestamp=t.log[-1].time if t.log else datetime.now(timezone.utc),
         broker_order_id=str(t.order.permId) if t.order.permId else None,
         raw={"ib_status": st.status},
     )
@@ -44,8 +44,12 @@ async def get_open_orders(ib) -> list[OrderUpdate]:
 
 
 async def get_order_status(ib, order_id: str) -> OrderStatus:
+    """Status of a single OPEN order by IBKR order id or perm id. Completed (filled/cancelled) orders are not returned here — use get_executions for fills."""
     for t in await ib.reqAllOpenOrdersAsync():
-        if order_id in (str(t.order.orderId), str(t.order.permId)):
+        ids = {str(t.order.orderId)}
+        if t.order.permId:
+            ids.add(str(t.order.permId))
+        if order_id in ids:
             return map_ib_status(
                 t.orderStatus.status, t.orderStatus.filled, t.orderStatus.remaining
             )
@@ -53,9 +57,12 @@ async def get_order_status(ib, order_id: str) -> OrderStatus:
 
 
 async def get_executions(ib, since: datetime) -> list[OrderUpdate]:
+    """Fills at or after `since`. Note: IBKR's execution feed is effectively limited to ~the current trading day; older fills are not returned."""
     out = []
     for f in await ib.reqExecutionsAsync():
-        if f.time < since:
+        # Real TWS may return naive execution datetimes; treat naive as UTC.
+        ft = f.time if f.time.tzinfo is not None else f.time.replace(tzinfo=timezone.utc)
+        if ft < since:
             continue
         out.append(
             OrderUpdate(
@@ -63,7 +70,7 @@ async def get_executions(ib, since: datetime) -> list[OrderUpdate]:
                 status=OrderStatus.FILLED,
                 filled_quantity=Decimal(str(f.execution.shares)),
                 fill_price=float(f.execution.price),
-                timestamp=f.time,
+                timestamp=ft,
                 broker_order_id=None,
                 raw={
                     "side": f.execution.side,

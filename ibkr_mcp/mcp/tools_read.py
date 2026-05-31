@@ -3,7 +3,7 @@
 Takes an IBKRConnection. server.py wraps these in @app.tool() decorators.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ibkr_mcp.core.account import get_account_summary, get_positions
 from ibkr_mcp.core.connection import IBKRConnection
@@ -75,4 +75,6 @@ async def order_status(conn, order_id: str) -> dict:
 async def executions(conn, since_iso: str) -> list[dict]:
     await conn.ensure_connected()
     since = datetime.fromisoformat(since_iso)
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=timezone.utc)  # treat naive ISO as UTC
     return [_update_to_dict(u) for u in await get_executions(conn.ib, since)]
