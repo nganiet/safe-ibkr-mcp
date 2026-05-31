@@ -1,8 +1,10 @@
 """Account reads. Imports ib_async; never mcp/FastMCP."""
 
+from decimal import Decimal
+
 import ib_async
 
-from ibkr_mcp.core.models import AccountInfo
+from ibkr_mcp.core.models import AccountInfo, PositionInfo
 
 
 async def get_account_summary(ib: "ib_async.IB") -> AccountInfo:
@@ -22,3 +24,19 @@ async def get_account_summary(ib: "ib_async.IB") -> AccountInfo:
         positions_value=num("GrossPositionValue"),
         unrealized_pnl=num("UnrealizedPnL"),
     )
+
+
+async def get_positions(ib) -> list[PositionInfo]:
+    # ib.positions() is populated at connect (connectAsync fetches POSITIONS).
+    # Live valuation (price/market_value/uPnL) needs market data — added in M3b.
+    return [
+        PositionInfo(
+            ticker=p.contract.symbol,
+            shares=Decimal(str(p.position)),
+            avg_cost=float(p.avgCost),
+            current_price=0.0,
+            market_value=0.0,
+            unrealized_pnl=0.0,
+        )
+        for p in ib.positions()
+    ]

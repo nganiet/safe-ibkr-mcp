@@ -1,6 +1,8 @@
+from decimal import Decimal
+
 import pytest
 
-from ibkr_mcp.core.account import get_account_summary
+from ibkr_mcp.core.account import get_account_summary, get_positions
 
 
 class _Row:
@@ -48,3 +50,39 @@ async def test_missing_tag_defaults_to_zero():
 async def test_non_numeric_value_defaults_to_zero():
     acct = await get_account_summary(_FakeIB([_Row("NetLiquidation", "N/A")]))
     assert acct.total_value == 0.0
+
+
+class _FakeContract:
+    def __init__(self, symbol):
+        self.symbol = symbol
+
+
+class _FakePosition:
+    def __init__(self, symbol, position, avg_cost):
+        self.contract = _FakeContract(symbol)
+        self.position = position
+        self.avgCost = avg_cost
+
+
+class _FakePosIB:
+    def __init__(self, positions):
+        self._positions = positions
+
+    def positions(self):
+        return self._positions
+
+
+async def test_get_positions_maps_shares_and_cost():
+    ib = _FakePosIB([_FakePosition("AAPL", 10, 150.0), _FakePosition("MSFT", 5, 300.0)])
+    out = await get_positions(ib)
+    assert [p.ticker for p in out] == ["AAPL", "MSFT"]
+    assert out[0].shares == Decimal("10")
+    assert out[0].avg_cost == 150.0
+    # live valuation is M3b — unavailable fields are 0.0 in M3a
+    assert out[0].current_price == 0.0
+    assert out[0].market_value == 0.0
+    assert out[0].unrealized_pnl == 0.0
+
+
+async def test_get_positions_empty():
+    assert await get_positions(_FakePosIB([])) == []
