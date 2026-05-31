@@ -29,7 +29,9 @@ def map_ib_status(ib_status: str, filled: float, remaining: float) -> OrderStatu
 def _trade_to_update(t) -> OrderUpdate:
     st = t.orderStatus
     return OrderUpdate(
-        order_id=str(t.order.orderId),
+        # orderId is 0 for orders not from this client session (TWS-manual,
+        # another client, prior session); fall back to the stable permId.
+        order_id=str(t.order.orderId) if t.order.orderId else str(t.order.permId),
         status=map_ib_status(st.status, st.filled, st.remaining),
         filled_quantity=Decimal(str(st.filled)),
         fill_price=float(st.avgFillPrice) if st.avgFillPrice else None,

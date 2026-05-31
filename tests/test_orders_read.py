@@ -91,6 +91,16 @@ async def test_get_open_orders_maps_to_updates():
     assert u.timestamp == _TS
 
 
+async def test_open_order_id_falls_back_to_perm_id_when_orderid_zero():
+    # IBKR sets orderId=0 for orders not placed by THIS client session
+    # (TWS-manual, another client, or a prior session); permId is the stable id.
+    # Surfaced live: two real open orders came back with order_id "0".
+    ib = _OrdersIB([_Trade(0, 900, "Submitted", 0, 100, 0.0, _TS)])
+    out = await get_open_orders(ib)
+    assert out[0].order_id == "900"  # falls back to permId, not the useless "0"
+    assert out[0].broker_order_id == "900"
+
+
 async def test_get_order_status_found_and_not_found():
     ib = _OrdersIB([_Trade(7, 900, "Filled", 100, 0, 150.5, _TS)])
     assert await get_order_status(ib, "7") == OrderStatus.FILLED
