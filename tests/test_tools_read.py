@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
-from ibkr_mcp.core.models import BrokerHealth
+from ibkr_mcp.core.models import BrokerHealth, OrderStatus, OrderUpdate
 from ibkr_mcp.mcp import tools_read
 
 
@@ -55,3 +56,99 @@ async def test_account_summary_tool_ensures_connection_and_maps():
     assert out["buying_power"] == 0.0
     assert out["positions_value"] == 0.0
     assert out["unrealized_pnl"] == 0.0
+
+
+class _ReadsConn:
+    is_paper = True
+
+    def __init__(self):
+        self.ensured = False
+
+    async def ensure_connected(self):
+        self.ensured = True
+
+    @property
+    def ib(self):
+        return self._ib
+
+
+async def test_positions_tool():
+    conn = _ReadsConn()
+    # patch core call via the connection's ib + monkeypatch-free: use a fake that tools call
+    conn._ib = type(
+        "IB",
+        (),
+        {
+            "positions": lambda self: [
+                type(
+                    "P",
+                    (),
+                    {
+                        "contract": type("C", (), {"symbol": "AAPL"})(),
+                        "position": 10,
+                        "avgCost": 150.0,
+                    },
+                )()
+            ]
+        },
+    )()
+    out = await tools_read.positions(conn)
+    assert conn.ensured is True
+    assert out[0]["ticker"] == "AAPL"
+    assert out[0]["shares"] == "10"  # Decimal serialized as str
+    assert out[0]["valuation_available"] is False
+
+
+async def test_open_orders_tool(monkeypatch):
+    conn = _ReadsConn()
+    updates = [
+        OrderUpdate(
+            "7",
+            OrderStatus.SUBMITTED,
+            Decimal(0),
+            None,
+            datetime(2026, 5, 31, tzinfo=timezone.utc),
+            broker_order_id="900",
+        )
+    ]
+
+    async def fake_get_open_orders(ib):
+        return updates
+
+    monkeypatch.setattr(tools_read, "get_open_orders", fake_get_open_orders)
+    conn._ib = object()
+    out = await tools_read.open_orders(conn)
+    assert conn.ensured is True
+    assert out[0]["order_id"] == "7"
+    assert out[0]["status"] == "SUBMITTED"
+    assert out[0]["broker_order_id"] == "900"
+
+
+async def test_order_status_tool(monkeypatch):
+    conn = _ReadsConn()
+
+    async def fake_status(ib, order_id):
+        return OrderStatus.FILLED
+
+    monkeypatch.setattr(tools_read, "get_order_status", fake_status)
+    conn._ib = object()
+    out = await tools_read.order_status(conn, "7")
+    assert out == {"order_id": "7", "status": "FILLED"}
+
+
+async def test_executions_tool(monkeypatch):
+    conn = _ReadsConn()
+    upd = [
+        OrderUpdate(
+            "e1", OrderStatus.FILLED, Decimal(5), 151.0, datetime(2026, 5, 31, tzinfo=timezone.utc)
+        )
+    ]
+
+    async def fake_execs(ib, since):
+        return upd
+
+    monkeypatch.setattr(tools_read, "get_executions", fake_execs)
+    conn._ib = object()
+    out = await tools_read.executions(conn, since_iso="2026-05-31T00:00:00+00:00")
+    assert out[0]["order_id"] == "e1"
+    assert out[0]["filled_quantity"] == "5"
