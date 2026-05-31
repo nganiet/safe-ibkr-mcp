@@ -6,6 +6,7 @@ Two cohesive concerns over one state file:
 Pure logic — no ib_async, no mcp.
 """
 
+import contextlib
 import json
 import secrets
 import sqlite3
@@ -37,14 +38,14 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 class IdempotencyStore:
     def __init__(self, db_path: Path | None = None) -> None:
         self._db = db_path if db_path is not None else _DEFAULT_DB
-        with _connect(self._db) as c:
+        with contextlib.closing(_connect(self._db)) as c, c:
             c.execute(
                 "CREATE TABLE IF NOT EXISTS idempotency "
                 "(client_order_id TEXT PRIMARY KEY, result TEXT NOT NULL)"
             )
 
     def get(self, client_order_id: str) -> dict | None:
-        with _connect(self._db) as c:
+        with contextlib.closing(_connect(self._db)) as c, c:
             row = c.execute(
                 "SELECT result FROM idempotency WHERE client_order_id = ?",
                 (client_order_id,),
@@ -53,7 +54,7 @@ class IdempotencyStore:
 
     def remember(self, client_order_id: str, result: dict) -> None:
         # INSERT OR IGNORE keeps the FIRST result (idempotent).
-        with _connect(self._db) as c:
+        with contextlib.closing(_connect(self._db)) as c, c:
             c.execute(
                 "INSERT OR IGNORE INTO idempotency (client_order_id, result) VALUES (?, ?)",
                 (client_order_id, json.dumps(result)),
@@ -69,7 +70,7 @@ class PreviewTokenStore:
     ) -> None:
         self._db = db_path if db_path is not None else _DEFAULT_DB
         self._now = now if now is not None else (lambda: datetime.now(timezone.utc))
-        with _connect(self._db) as c:
+        with contextlib.closing(_connect(self._db)) as c, c:
             c.execute(
                 "CREATE TABLE IF NOT EXISTS preview_tokens "
                 "(token TEXT PRIMARY KEY, params_hash TEXT NOT NULL, created_at TEXT NOT NULL)"
@@ -77,7 +78,7 @@ class PreviewTokenStore:
 
     def issue(self, params_hash: str) -> str:
         token = secrets.token_urlsafe(24)
-        with _connect(self._db) as c:
+        with contextlib.closing(_connect(self._db)) as c, c:
             c.execute(
                 "INSERT INTO preview_tokens (token, params_hash, created_at) VALUES (?, ?, ?)",
                 (token, params_hash, self._now().isoformat()),
@@ -85,7 +86,7 @@ class PreviewTokenStore:
         return token
 
     def consume(self, token: str, params_hash: str, *, ttl_seconds: int = 60) -> None:
-        with _connect(self._db) as c:
+        with contextlib.closing(_connect(self._db)) as c, c:
             row = c.execute(
                 "SELECT params_hash, created_at FROM preview_tokens WHERE token = ?",
                 (token,),

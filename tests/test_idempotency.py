@@ -108,3 +108,24 @@ def test_unknown_token_rejected(tmp_path):
     s = PreviewTokenStore(db_path=tmp_path / "state.db")
     with pytest.raises(UnknownToken):
         s.consume("never-issued", "hash-abc")
+
+
+def test_token_gone_after_expired_consume(tmp_path):
+    clock = _Clock(datetime(2026, 5, 31, tzinfo=timezone.utc))
+    s = PreviewTokenStore(db_path=tmp_path / "state.db", now=clock)
+    tok = s.issue("hash-abc")
+    clock.advance(61)
+    with pytest.raises(ExpiredToken):
+        s.consume(tok, "hash-abc", ttl_seconds=60)
+    with pytest.raises(UnknownToken):  # single-use even on failure
+        s.consume(tok, "hash-abc")
+
+
+def test_token_gone_after_params_mismatch(tmp_path):
+    clock = _Clock(datetime(2026, 5, 31, tzinfo=timezone.utc))
+    s = PreviewTokenStore(db_path=tmp_path / "state.db", now=clock)
+    tok = s.issue("hash-abc")
+    with pytest.raises(ParamsMismatch):
+        s.consume(tok, "hash-WRONG")
+    with pytest.raises(UnknownToken):  # token was burned despite the mismatch
+        s.consume(tok, "hash-abc")

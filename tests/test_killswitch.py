@@ -33,3 +33,11 @@ def test_check_message_includes_reason(tmp_path):
     ks.arm("circuit breaker")
     with pytest.raises(KillSwitchEngaged, match="circuit breaker"):
         ks.check()
+
+
+def test_check_message_includes_sentinel_path(tmp_path):
+    p = tmp_path / "KILL"
+    p.write_text("frozen")
+    ks = KillSwitch(path=p)
+    with pytest.raises(KillSwitchEngaged, match="sentinel file"):
+        ks.check()
