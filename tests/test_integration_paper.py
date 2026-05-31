@@ -30,3 +30,17 @@ async def test_health_and_account_against_paper():
         print("PAPER ACCOUNT SUMMARY:", acct)
     finally:
         conn.disconnect()
+
+
+@pytest.mark.skipif(not _RUN, reason="set IBKR_MCP_RUN_INTEGRATION=1 with a paper Gateway running")
+async def test_reads_against_paper():
+    conn = IBKRConnection("127.0.0.1", 4002, 98, readonly=True)
+    try:
+        await conn.ensure_connected()
+        pos = await tools_read.positions(conn)
+        assert isinstance(pos, list)  # may be empty on a fresh paper account
+        oo = await tools_read.open_orders(conn)
+        assert isinstance(oo, list)
+        print("PAPER POSITIONS:", pos, "OPEN ORDERS:", oo)
+    finally:
+        conn.disconnect()
