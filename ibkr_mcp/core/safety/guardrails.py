@@ -29,6 +29,8 @@ class GuardrailPolicy:
         est_price: float | None,
         is_paper: bool,
     ) -> None:
+        if qty <= 0:
+            raise GuardrailViolation("INVALID_QTY", f"Order qty must be positive, got {qty}.")
         if not is_paper and not self.allow_live:
             raise GuardrailViolation(
                 "LIVE_NOT_ALLOWED",
