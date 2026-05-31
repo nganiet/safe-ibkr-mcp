@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 import ib_async
 
+from ibkr_mcp.core.errors import broker_unavailable_from_connect
 from ibkr_mcp.core.models import BrokerHealth
 
 # IBKR socket convention: paper = 4002 (Gateway) / 7497 (TWS),
@@ -46,9 +47,14 @@ class IBKRConnection:
     async def ensure_connected(self) -> None:
         if self._ib.isConnected():
             return
-        await self._ib.connectAsync(
-            self.host, self.port, clientId=self.client_id, readonly=self.readonly
-        )
+        try:
+            await self._ib.connectAsync(
+                self.host, self.port, clientId=self.client_id, readonly=self.readonly
+            )
+        except (OSError, TimeoutError) as exc:
+            # OSError covers ConnectionRefusedError; TimeoutError covers the apiStart
+            # handshake stall (gateway up but API blocked / accept-dialog pending).
+            raise broker_unavailable_from_connect(exc, self.host, self.port) from exc
 
     async def health(self) -> BrokerHealth:
         connected = self._ib.isConnected()

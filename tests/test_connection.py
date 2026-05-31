@@ -67,3 +67,26 @@ async def test_disconnect_closes_a_live_connection():
     assert fake.isConnected() is True
     conn.disconnect()
     assert fake.isConnected() is False
+
+
+import pytest
+
+from ibkr_mcp.core.errors import BrokerUnavailable
+
+
+class _RefusingIB:
+    def isConnected(self):
+        return False
+
+    async def connectAsync(self, host, port, clientId, readonly=False, **kw):
+        raise ConnectionRefusedError(61, "Connection refused")
+
+    def disconnect(self):
+        return None
+
+
+async def test_ensure_connected_maps_refused_to_broker_unavailable():
+    conn = IBKRConnection("127.0.0.1", 4001, 1, ib_factory=lambda: _RefusingIB())
+    with pytest.raises(BrokerUnavailable) as e:
+        await conn.ensure_connected()
+    assert "127.0.0.1:4001" in str(e.value)
