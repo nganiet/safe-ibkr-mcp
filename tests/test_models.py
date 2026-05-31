@@ -1,6 +1,15 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
-from ibkr_mcp.core.models import AccountInfo, BrokerHealth
+from ibkr_mcp.core.models import (
+    AccountInfo,
+    AssetClass,
+    BrokerHealth,
+    OrderStatus,
+    OrderUpdate,
+    PositionInfo,
+    Symbol,
+)
 
 
 def test_broker_health_defaults():
@@ -31,3 +40,42 @@ def test_account_info_fields():
     assert a.unrealized_pnl == 1_234.5
     assert a.cash == 50_000.0
     assert a.positions_value == 50_000.0
+
+
+def test_symbol_equity_shortcut():
+    s = Symbol.equity("aapl")
+    assert s.code == "AAPL"
+    assert s.asset_class == AssetClass.EQUITY
+    assert s.exchange is None
+
+
+def test_order_status_values():
+    assert OrderStatus.FILLED == "FILLED"
+    assert OrderStatus.PARTIALLY_FILLED == "PARTIALLY_FILLED"
+
+
+def test_position_info_fields():
+    p = PositionInfo(
+        ticker="AAPL",
+        shares=Decimal(10),
+        avg_cost=150.0,
+        current_price=0.0,
+        unrealized_pnl=0.0,
+        market_value=0.0,
+    )
+    assert p.ticker == "AAPL"
+    assert p.shares == Decimal(10)
+
+
+def test_order_update_defaults():
+    from datetime import datetime, timezone
+
+    u = OrderUpdate(
+        order_id="1",
+        status=OrderStatus.SUBMITTED,
+        filled_quantity=Decimal(0),
+        fill_price=None,
+        timestamp=datetime(2026, 5, 31, tzinfo=timezone.utc),
+    )
+    assert u.broker_order_id is None
+    assert u.raw == {}
