@@ -1,5 +1,3 @@
-import math
-
 import pytest
 
 from ibkr_mcp.core.errors import MarketDataNotEntitled
@@ -16,13 +14,18 @@ class _Ticker:
 
 
 class _Bar:
-    def __init__(self, date, o, h, l, c, v):
-        self.date, self.open, self.high, self.low, self.close, self.volume = date, o, h, l, c, v
+    def __init__(self, date, o, h, lo, c, v):
+        self.date, self.open, self.high, self.low, self.close, self.volume = date, o, h, lo, c, v
 
 
 class _OptParams:
     def __init__(self, exchange, expirations, strikes, multiplier="100"):
-        self.exchange, self.expirations, self.strikes, self.multiplier = exchange, expirations, strikes, multiplier
+        self.exchange, self.expirations, self.strikes, self.multiplier = (
+            exchange,
+            expirations,
+            strikes,
+            multiplier,
+        )
 
 
 class _Contract:
@@ -61,7 +64,7 @@ async def test_get_quote_delayed_default():
 
 async def test_get_quote_realtime_when_requested():
     ib = _MDIB(ticker=_Ticker(last=150.5, mdt=1))
-    out = await get_quote(ib, Symbol.equity("AAPL"), delayed=False)
+    await get_quote(ib, Symbol.equity("AAPL"), delayed=False)
     assert ib.md_type == 1
 
 
@@ -78,17 +81,28 @@ async def test_get_quote_nan_fields_become_none():
 
 
 async def test_get_historical_bars():
-    ib = _MDIB(bars=[_Bar("2026-05-30", 1, 2, 0.5, 1.5, 1000), _Bar("2026-05-31", 1.5, 2.5, 1, 2, 2000)])
+    ib = _MDIB(
+        bars=[_Bar("2026-05-30", 1, 2, 0.5, 1.5, 1000), _Bar("2026-05-31", 1.5, 2.5, 1, 2, 2000)]
+    )
     out = await get_historical_bars(ib, Symbol.equity("AAPL"))
     assert len(out) == 2
-    assert out[0] == {"date": "2026-05-30", "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 1000.0}
+    assert out[0] == {
+        "date": "2026-05-30",
+        "open": 1,
+        "high": 2,
+        "low": 0.5,
+        "close": 1.5,
+        "volume": 1000.0,
+    }
 
 
 async def test_get_option_chain_prefers_smart():
-    ib = _MDIB(params=[
-        _OptParams("CBOE", ["20260619"], [140.0, 150.0]),
-        _OptParams("SMART", ["20260619", "20260717"], [150.0, 145.0]),
-    ])
+    ib = _MDIB(
+        params=[
+            _OptParams("CBOE", ["20260619"], [140.0, 150.0]),
+            _OptParams("SMART", ["20260619", "20260717"], [150.0, 145.0]),
+        ]
+    )
     out = await get_option_chain(ib, Symbol.equity("AAPL"))
     assert out["exchange"] == "SMART"
     assert out["expirations"] == ["20260619", "20260717"]  # sorted

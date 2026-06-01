@@ -58,6 +58,23 @@ def build_server(conn: IBKRConnection, config: Config | None = None) -> FastMCP:
         """Fills since an ISO-8601 timestamp (e.g. 2026-05-31T00:00:00+00:00)."""
         return await tools_read.executions(conn, since_iso)
 
+    @app.tool()
+    async def get_quote(ticker: str, delayed: bool = True) -> dict:
+        """Snapshot quote (last/bid/ask/close). Delayed by default (free); set delayed=false for real-time (needs a paid IBKR subscription)."""
+        return await tools_read.quote(conn, ticker, delayed=delayed)
+
+    @app.tool()
+    async def get_historical_bars(
+        ticker: str, duration: str = "5 D", bar_size: str = "1 day"
+    ) -> list:
+        """Historical OHLCV bars (e.g. duration='5 D', bar_size='1 day')."""
+        return await tools_read.historical_bars(conn, ticker, duration=duration, bar_size=bar_size)
+
+    @app.tool()
+    async def get_option_chain(ticker: str) -> dict:
+        """Option expirations and strikes for the underlying (SMART exchange)."""
+        return await tools_read.option_chain(conn, ticker)
+
     if not config.read_only:
         ctx = tools_write.WriteContext(
             policy=GuardrailPolicy(

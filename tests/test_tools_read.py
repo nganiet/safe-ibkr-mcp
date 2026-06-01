@@ -161,3 +161,41 @@ async def test_executions_tool_normalizes_naive_since(monkeypatch):
     conn._ib = object()
     await tools_read.executions(conn, since_iso="2026-05-31T00:00:00")  # naive ISO
     assert captured["since"].tzinfo is not None
+
+
+async def test_quote_tool(monkeypatch):
+    conn = _ReadsConn()
+    conn._ib = object()
+
+    async def fake_get_quote(ib, symbol, *, delayed=True):
+        assert symbol.code == "AAPL"
+        return {"ticker": "AAPL", "last": 150.5, "delayed": delayed}
+
+    monkeypatch.setattr(tools_read, "get_quote", fake_get_quote)
+    out = await tools_read.quote(conn, "aapl")
+    assert conn.ensured is True
+    assert out["ticker"] == "AAPL" and out["last"] == 150.5
+
+
+async def test_historical_bars_tool(monkeypatch):
+    conn = _ReadsConn()
+    conn._ib = object()
+
+    async def fake_bars(ib, symbol, **kw):
+        return [{"date": "2026-05-31", "close": 2.0}]
+
+    monkeypatch.setattr(tools_read, "get_historical_bars", fake_bars)
+    out = await tools_read.historical_bars(conn, "AAPL", duration="1 D", bar_size="1 hour")
+    assert out[0]["close"] == 2.0
+
+
+async def test_option_chain_tool(monkeypatch):
+    conn = _ReadsConn()
+    conn._ib = object()
+
+    async def fake_chain(ib, symbol):
+        return {"ticker": "AAPL", "expirations": ["20260619"]}
+
+    monkeypatch.setattr(tools_read, "get_option_chain", fake_chain)
+    out = await tools_read.option_chain(conn, "AAPL")
+    assert out["expirations"] == ["20260619"]
