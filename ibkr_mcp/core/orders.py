@@ -1,11 +1,20 @@
 """Order & execution READS + IBKR status mapping. Imports ib_async data shapes only,
-never mcp/FastMCP. Write operations (place/cancel/modify) are M4.
+never mcp/FastMCP. Write operations (place/cancel/modify) added in M4.
 """
 
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from ibkr_mcp.core.models import OrderStatus, OrderUpdate
+from ib_async import LimitOrder, MarketOrder, StopOrder
+
+from ibkr_mcp.core.contracts import qualify
+from ibkr_mcp.core.models import (
+    OrderConfirmation,
+    OrderRequest,
+    OrderStatus,
+    OrderType,
+    OrderUpdate,
+)
 
 _PENDING = {"PendingSubmit", "ApiPending", "PreSubmitted"}
 _CANCELLED = {"Cancelled", "ApiCancelled"}
@@ -82,3 +91,66 @@ async def get_executions(ib, since: datetime) -> list[OrderUpdate]:
             )
         )
     return out
+
+
+# ---------------------------------------------------------------------------
+# M4 write helpers — real IB calls, never mcp/FastMCP
+# ---------------------------------------------------------------------------
+
+
+def build_ib_order(req: OrderRequest):
+    """Build an ib_async order object from a domain OrderRequest."""
+    action = req.side.value  # "BUY" / "SELL"
+    qty = float(req.quantity)
+    if req.order_type == OrderType.MARKET:
+        return MarketOrder(action, qty)
+    if req.order_type == OrderType.LIMIT:
+        if req.limit_price is None:
+            raise ValueError("limit_price is required for a LIMIT order")
+        return LimitOrder(action, qty, req.limit_price)
+    if req.order_type == OrderType.STOP:
+        if req.stop_price is None:
+            raise ValueError("stop_price is required for a STOP order")
+        return StopOrder(action, qty, req.stop_price)
+    raise ValueError(f"Unsupported order type: {req.order_type}")
+
+
+async def what_if(ib, req: OrderRequest) -> dict:
+    """Run a what-if (margin / commission estimate) without placing an order."""
+    contract = await qualify(ib, req.symbol)
+    state = await ib.whatIfOrderAsync(contract, build_ib_order(req))
+    return {
+        "init_margin_change": getattr(state, "initMarginChange", None),
+        "maint_margin_change": getattr(state, "maintMarginChange", None),
+        "commission": getattr(state, "commission", None),
+        "max_commission": getattr(state, "maxCommission", None),
+        "warning": getattr(state, "warningText", None),
+    }
+
+
+async def place_order(ib, req: OrderRequest) -> OrderConfirmation:
+    """Qualify the contract and submit the order. placeOrder() is non-blocking
+    (returns Trade immediately); fill events arrive asynchronously via ib_async events."""
+    contract = await qualify(ib, req.symbol)
+    trade = ib.placeOrder(contract, build_ib_order(req))  # sync, non-blocking
+    st = trade.orderStatus
+    return OrderConfirmation(
+        order_id=str(getattr(trade.order, "permId", "") or ""),
+        status=map_ib_status(st.status, st.filled, st.remaining),
+        filled_quantity=Decimal(str(st.filled)),
+        fill_price=float(st.avgFillPrice) if st.avgFillPrice else None,
+        broker_order_id=str(trade.order.permId) if trade.order.permId else None,
+    )
+
+
+async def cancel_order(ib, order_id: str) -> OrderConfirmation:
+    """Cancel an open order by IBKR orderId or permId. Raises ValueError if not found."""
+    for t in await ib.reqAllOpenOrdersAsync():
+        if order_id in (str(t.order.orderId), str(t.order.permId)):
+            ib.cancelOrder(t.order)
+            return OrderConfirmation(
+                order_id=order_id,
+                status=OrderStatus.CANCELLED,
+                broker_order_id=str(t.order.permId) if t.order.permId else None,
+            )
+    raise ValueError(f"Order {order_id} not found among open orders.")
