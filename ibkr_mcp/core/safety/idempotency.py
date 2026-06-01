@@ -25,10 +25,6 @@ class ExpiredToken(Exception):
     """Token older than its TTL."""
 
 
-class ParamsMismatch(Exception):
-    """Token presented with a params hash different from issuance."""
-
-
 def _connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
@@ -73,30 +69,29 @@ class PreviewTokenStore:
         with contextlib.closing(_connect(self._db)) as c, c:
             c.execute(
                 "CREATE TABLE IF NOT EXISTS preview_tokens "
-                "(token TEXT PRIMARY KEY, params_hash TEXT NOT NULL, created_at TEXT NOT NULL)"
+                "(token TEXT PRIMARY KEY, payload TEXT NOT NULL, created_at TEXT NOT NULL)"
             )
 
-    def issue(self, params_hash: str) -> str:
+    def issue(self, payload: dict) -> str:
         token = secrets.token_urlsafe(24)
         with contextlib.closing(_connect(self._db)) as c, c:
             c.execute(
-                "INSERT INTO preview_tokens (token, params_hash, created_at) VALUES (?, ?, ?)",
-                (token, params_hash, self._now().isoformat()),
+                "INSERT INTO preview_tokens (token, payload, created_at) VALUES (?, ?, ?)",
+                (token, json.dumps(payload), self._now().isoformat()),
             )
         return token
 
-    def consume(self, token: str, params_hash: str, *, ttl_seconds: int = 60) -> None:
+    def consume(self, token: str, *, ttl_seconds: int = 60) -> dict:
         with contextlib.closing(_connect(self._db)) as c, c:
             row = c.execute(
-                "SELECT params_hash, created_at FROM preview_tokens WHERE token = ?",
+                "SELECT payload, created_at FROM preview_tokens WHERE token = ?",
                 (token,),
             ).fetchone()
             if row is None:
                 raise UnknownToken("Preview token not found or already consumed.")
-            stored_hash, created_at = row[0], datetime.fromisoformat(row[1])
+            payload, created_at = json.loads(row[0]), datetime.fromisoformat(row[1])
             # Single-use: remove first so it cannot be replayed even if a check below fails.
             c.execute("DELETE FROM preview_tokens WHERE token = ?", (token,))
         if (self._now() - created_at).total_seconds() > ttl_seconds:
             raise ExpiredToken("Preview token has expired — re-run preview_order.")
-        if stored_hash != params_hash:
-            raise ParamsMismatch("Order params changed since preview — re-run preview_order.")
+        return payload

@@ -5,7 +5,6 @@ import pytest
 from ibkr_mcp.core.safety.idempotency import (
     ExpiredToken,
     IdempotencyStore,
-    ParamsMismatch,
     PreviewTokenStore,
     UnknownToken,
 )
@@ -70,62 +69,35 @@ class _Clock:
         self.t = self.t + timedelta(seconds=seconds)
 
 
-def test_issue_then_consume_ok(tmp_path):
+def test_issue_then_consume_returns_payload(tmp_path):
     clock = _Clock(datetime(2026, 5, 31, tzinfo=timezone.utc))
     s = PreviewTokenStore(db_path=tmp_path / "state.db", now=clock)
-    tok = s.issue("hash-abc")
+    tok = s.issue({"symbol": "AAPL", "side": "BUY", "qty": "10"})
     assert isinstance(tok, str) and len(tok) >= 16
-    s.consume(tok, "hash-abc")  # no raise
+    assert s.consume(tok) == {"symbol": "AAPL", "side": "BUY", "qty": "10"}
 
 
 def test_consume_is_single_use(tmp_path):
     clock = _Clock(datetime(2026, 5, 31, tzinfo=timezone.utc))
     s = PreviewTokenStore(db_path=tmp_path / "state.db", now=clock)
-    tok = s.issue("hash-abc")
-    s.consume(tok, "hash-abc")
+    tok = s.issue({"a": 1})
+    s.consume(tok)
     with pytest.raises(UnknownToken):
-        s.consume(tok, "hash-abc")  # already consumed
+        s.consume(tok)
 
 
-def test_expired_token_rejected(tmp_path):
+def test_expired_token_rejected_and_burned(tmp_path):
     clock = _Clock(datetime(2026, 5, 31, tzinfo=timezone.utc))
     s = PreviewTokenStore(db_path=tmp_path / "state.db", now=clock)
-    tok = s.issue("hash-abc")
-    clock.advance(61)  # default ttl 60s
+    tok = s.issue({"a": 1})
+    clock.advance(61)
     with pytest.raises(ExpiredToken):
-        s.consume(tok, "hash-abc", ttl_seconds=60)
-
-
-def test_params_mismatch_rejected(tmp_path):
-    clock = _Clock(datetime(2026, 5, 31, tzinfo=timezone.utc))
-    s = PreviewTokenStore(db_path=tmp_path / "state.db", now=clock)
-    tok = s.issue("hash-abc")
-    with pytest.raises(ParamsMismatch):
-        s.consume(tok, "hash-DIFFERENT")
+        s.consume(tok, ttl_seconds=60)
+    with pytest.raises(UnknownToken):  # burned even on expiry
+        s.consume(tok)
 
 
 def test_unknown_token_rejected(tmp_path):
     s = PreviewTokenStore(db_path=tmp_path / "state.db")
     with pytest.raises(UnknownToken):
-        s.consume("never-issued", "hash-abc")
-
-
-def test_token_gone_after_expired_consume(tmp_path):
-    clock = _Clock(datetime(2026, 5, 31, tzinfo=timezone.utc))
-    s = PreviewTokenStore(db_path=tmp_path / "state.db", now=clock)
-    tok = s.issue("hash-abc")
-    clock.advance(61)
-    with pytest.raises(ExpiredToken):
-        s.consume(tok, "hash-abc", ttl_seconds=60)
-    with pytest.raises(UnknownToken):  # single-use even on failure
-        s.consume(tok, "hash-abc")
-
-
-def test_token_gone_after_params_mismatch(tmp_path):
-    clock = _Clock(datetime(2026, 5, 31, tzinfo=timezone.utc))
-    s = PreviewTokenStore(db_path=tmp_path / "state.db", now=clock)
-    tok = s.issue("hash-abc")
-    with pytest.raises(ParamsMismatch):
-        s.consume(tok, "hash-WRONG")
-    with pytest.raises(UnknownToken):  # token was burned despite the mismatch
-        s.consume(tok, "hash-abc")
+        s.consume("never-issued")
