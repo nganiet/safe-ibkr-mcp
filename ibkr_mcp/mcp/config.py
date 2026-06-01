@@ -7,7 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 
 _TRUTHY = {"1", "true", "yes", "on"}
-_LIVE_PORTS = {4001, 7496}
+_LIVE_PORTS = frozenset({4001, 7496})
 
 
 @dataclass

@@ -61,14 +61,10 @@ async def test_preview_then_confirm_places_once(tmp_path, monkeypatch):
     prev = await tools_write.preview_order(_Conn(), ctx, **_ORDER)
     assert "confirm_token" in prev and prev["confirm_token"]
 
-    conf1 = await tools_write.confirm_order(
-        _Conn(), ctx, confirm_token=prev["confirm_token"], client_order_id="cli-1"
-    )
+    conf1 = await tools_write.confirm_order(_Conn(), ctx, confirm_token=prev["confirm_token"])
     assert conf1["status"] == "SUBMITTED"
-    # MONEY-CRITICAL retry: same client_order_id → cached result, NO second placement, NO UnknownToken
-    conf2 = await tools_write.confirm_order(
-        _Conn(), ctx, confirm_token=prev["confirm_token"], client_order_id="cli-1"
-    )
+    # MONEY-CRITICAL retry: same token → cached result, NO second placement
+    conf2 = await tools_write.confirm_order(_Conn(), ctx, confirm_token=prev["confirm_token"])
     assert conf2 == conf1
     assert placements == ["AAPL"]  # placed exactly once
 
@@ -82,7 +78,7 @@ async def test_confirm_blocked_by_killswitch(tmp_path, monkeypatch):
     # token issued via a non-armed preview path: issue directly
     tok = ctx.tokens.issue(_ORDER)
     with pytest.raises(KillSwitchEngaged):
-        await tools_write.confirm_order(_Conn(), ctx, confirm_token=tok, client_order_id="cli-2")
+        await tools_write.confirm_order(_Conn(), ctx, confirm_token=tok)
 
 
 async def test_confirm_live_blocked_without_optin(tmp_path, monkeypatch):
@@ -90,10 +86,49 @@ async def test_confirm_live_blocked_without_optin(tmp_path, monkeypatch):
     monkeypatch.setattr(tools_write, "place_order", _fail_if_called)
     tok = ctx.tokens.issue(_ORDER)
     with pytest.raises(GuardrailViolation) as e:
-        await tools_write.confirm_order(
-            _Conn(is_paper=False), ctx, confirm_token=tok, client_order_id="cli-3"
-        )
+        await tools_write.confirm_order(_Conn(is_paper=False), ctx, confirm_token=tok)
     assert e.value.code == "LIVE_NOT_ALLOWED"
+
+
+async def test_distinct_tokens_place_distinct_orders(tmp_path, monkeypatch):
+    ctx = _ctx(tmp_path)
+    monkeypatch.setattr(tools_write, "what_if", _fake_what_if)
+    placed = []
+
+    async def fake_place(ib, req):
+        placed.append(req.ticker)
+        return OrderConfirmation(order_id=str(len(placed)), status=OrderStatus.SUBMITTED)
+
+    monkeypatch.setattr(tools_write, "place_order", fake_place)
+    p1 = await tools_write.preview_order(
+        _Conn(),
+        ctx,
+        symbol="AAPL",
+        side="BUY",
+        order_type="LIMIT",
+        quantity="10",
+        limit_price=150.0,
+    )
+    p2 = await tools_write.preview_order(
+        _Conn(), ctx, symbol="MSFT", side="BUY", order_type="LIMIT", quantity="5", limit_price=300.0
+    )
+    c1 = await tools_write.confirm_order(_Conn(), ctx, confirm_token=p1["confirm_token"])
+    c2 = await tools_write.confirm_order(_Conn(), ctx, confirm_token=p2["confirm_token"])
+    assert (
+        c1["order_id"] == "1" and c2["order_id"] == "2"
+    )  # distinct, NOT a cached return of order 1
+    again = await tools_write.confirm_order(_Conn(), ctx, confirm_token=p1["confirm_token"])
+    assert again == c1  # retry of T1 returns order 1's cached result
+    assert placed == ["AAPL", "MSFT"]  # exactly two placements
+
+
+async def test_cancel_blocked_by_killswitch(tmp_path, monkeypatch):
+    ks = KillSwitch(path=tmp_path / "KILL")
+    ks.arm("freeze")
+    ctx = _ctx(tmp_path, killswitch=ks)
+    monkeypatch.setattr(tools_write, "cancel_order", _fail_if_called)
+    with pytest.raises(KillSwitchEngaged):
+        await tools_write.cancel_order_tool(_Conn(), ctx, order_id="1")
 
 
 async def _fake_what_if(ib, req):

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from ibkr_mcp.core.models import OrderRequest, OrderSide, OrderType, Symbol
-from ibkr_mcp.core.orders import place_order, what_if
+from ibkr_mcp.core.orders import cancel_order, place_order, what_if
 from ibkr_mcp.core.safety.guardrails import GuardrailPolicy
 from ibkr_mcp.core.safety.idempotency import IdempotencyStore, PreviewTokenStore
 from ibkr_mcp.core.safety.killswitch import KillSwitch
@@ -59,19 +59,15 @@ async def preview_order(conn, ctx: WriteContext, **payload) -> dict:
     }
 
 
-async def confirm_order(
-    conn, ctx: WriteContext, *, confirm_token: str, client_order_id: str
-) -> dict:
+async def confirm_order(conn, ctx: WriteContext, *, confirm_token: str) -> dict:
     await conn.ensure_connected()
-    # (a) Idempotency FIRST — a retried confirm (lost response) returns the cached
-    #     result without consuming the token or re-placing. Money-critical ordering.
-    cached = ctx.idempotency.get(client_order_id)
+    # Idempotency keyed on the single-use token: collision-proof and retry-safe.
+    # (The token stays a valid idempotency key even after it's consumed from the token store.)
+    cached = ctx.idempotency.get(confirm_token)
     if cached is not None:
         return cached
-    # (b) consume the single-use token → the exact previewed order payload.
-    payload = ctx.tokens.consume(confirm_token)
+    payload = ctx.tokens.consume(confirm_token)  # single-use; raises if expired/unknown
     req = _req_from_payload(payload)
-    # (c) re-check kill-switch + guardrails at confirm time (defense-in-depth).
     ctx.killswitch.check()
     ctx.policy.check_order(
         ticker=req.ticker,
@@ -79,23 +75,20 @@ async def confirm_order(
         est_price=_est_price(payload),
         is_paper=conn.is_paper,
     )
-    # (d) place, (e) remember.
     conf = await place_order(conn.ib, req)
     result = {
         "order_id": conf.order_id,
         "status": conf.status.value,
         "broker_order_id": conf.broker_order_id,
-        "client_order_id": client_order_id,
+        "reject_reason": conf.reject_reason,
     }
-    ctx.idempotency.remember(client_order_id, result)
+    ctx.idempotency.remember(confirm_token, result)
     return result
 
 
 async def cancel_order_tool(conn, ctx: WriteContext, *, order_id: str) -> dict:
     await conn.ensure_connected()
     ctx.killswitch.check()
-    from ibkr_mcp.core.orders import cancel_order
-
     conf = await cancel_order(conn.ib, order_id)
     return {
         "order_id": conf.order_id,

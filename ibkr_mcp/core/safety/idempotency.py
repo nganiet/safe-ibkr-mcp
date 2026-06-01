@@ -32,6 +32,8 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 
 class IdempotencyStore:
+    """Permanent record of confirmed orders keyed by idempotency key (no TTL/cleanup by design)."""
+
     def __init__(self, db_path: Path | None = None) -> None:
         self._db = db_path if db_path is not None else _DEFAULT_DB
         with contextlib.closing(_connect(self._db)) as c, c:

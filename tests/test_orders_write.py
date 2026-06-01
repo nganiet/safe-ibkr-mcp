@@ -28,6 +28,7 @@ def test_build_ib_order_limit():
     o = build_ib_order(_req(OrderType.LIMIT, 10, 150.0))
     assert o.action == "BUY" and o.totalQuantity == 10 and o.lmtPrice == 150.0
     assert o.orderType == "LMT"
+    assert o.tif == "DAY"
 
 
 def test_build_ib_order_market():
@@ -45,9 +46,14 @@ def test_build_ib_order_limit_requires_price():
         build_ib_order(_req(OrderType.LIMIT, 10, None))
 
 
+def test_build_ib_order_stop_limit_unsupported():
+    with pytest.raises(ValueError, match="Unsupported"):
+        build_ib_order(_req(OrderType.STOP_LIMIT, 5, 150.0, stop=140.0))
+
+
 class _Trade:
     def __init__(self):
-        self.order = type("O", (), {"permId": 555})()
+        self.order = type("O", (), {"orderId": 42, "permId": 0})()
         self.orderStatus = type(
             "S",
             (),
@@ -84,7 +90,8 @@ async def test_place_order_returns_submitted_confirmation():
     conf = await place_order(ib, _req())
     assert isinstance(conf, OrderConfirmation)
     assert conf.status == OrderStatus.SUBMITTED
-    assert conf.broker_order_id == "555"
+    assert conf.order_id == "42"
+    assert conf.broker_order_id is None  # permId 0 → None
     assert ib.placed is not None  # actually called placeOrder
 
 

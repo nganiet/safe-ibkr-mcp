@@ -103,16 +103,19 @@ def build_ib_order(req: OrderRequest):
     action = req.side.value  # "BUY" / "SELL"
     qty = float(req.quantity)
     if req.order_type == OrderType.MARKET:
-        return MarketOrder(action, qty)
-    if req.order_type == OrderType.LIMIT:
+        order = MarketOrder(action, qty)
+    elif req.order_type == OrderType.LIMIT:
         if req.limit_price is None:
             raise ValueError("limit_price is required for a LIMIT order")
-        return LimitOrder(action, qty, req.limit_price)
-    if req.order_type == OrderType.STOP:
+        order = LimitOrder(action, qty, req.limit_price)
+    elif req.order_type == OrderType.STOP:
         if req.stop_price is None:
             raise ValueError("stop_price is required for a STOP order")
-        return StopOrder(action, qty, req.stop_price)
-    raise ValueError(f"Unsupported order type: {req.order_type}")
+        order = StopOrder(action, qty, req.stop_price)
+    else:
+        raise ValueError(f"Unsupported order type: {req.order_type}")
+    order.tif = req.time_in_force
+    return order
 
 
 async def what_if(ib, req: OrderRequest) -> dict:
@@ -135,7 +138,7 @@ async def place_order(ib, req: OrderRequest) -> OrderConfirmation:
     trade = ib.placeOrder(contract, build_ib_order(req))  # sync, non-blocking
     st = trade.orderStatus
     return OrderConfirmation(
-        order_id=str(getattr(trade.order, "permId", "") or ""),
+        order_id=str(trade.order.orderId or trade.order.permId or ""),
         status=map_ib_status(st.status, st.filled, st.remaining),
         filled_quantity=Decimal(str(st.filled)),
         fill_price=float(st.avgFillPrice) if st.avgFillPrice else None,

@@ -93,14 +93,9 @@ def build_server(conn: IBKRConnection, config: Config | None = None) -> FastMCP:
             )
 
         @app.tool()
-        async def confirm_order(confirm_token: str, client_order_id: str) -> dict:
-            """Place the order previewed under confirm_token. Idempotent on client_order_id (safe to retry)."""
-            return await tools_write.confirm_order(
-                conn,
-                ctx,
-                confirm_token=confirm_token,
-                client_order_id=client_order_id,
-            )
+        async def confirm_order(confirm_token: str) -> dict:
+            """Place the order previewed under confirm_token. Single-use + idempotent: retrying with the same token returns the original result and never double-places. If placement fails the token is consumed — re-run preview_order to retry."""
+            return await tools_write.confirm_order(conn, ctx, confirm_token=confirm_token)
 
         @app.tool()
         async def cancel_order(order_id: str) -> dict:
