@@ -10,6 +10,7 @@ from ibkr_mcp.core.models import (
     PositionInfo,
     Symbol,
 )
+from ibkr_mcp.core.models import OrderConfirmation, OrderRequest, OrderSide, OrderType
 
 
 def test_broker_health_defaults():
@@ -79,3 +80,20 @@ def test_order_update_defaults():
     )
     assert u.broker_order_id is None
     assert u.raw == {}
+
+
+def test_order_request_ticker_shortcut():
+    r = OrderRequest(
+        symbol=Symbol.equity("AAPL"),
+        side=OrderSide.BUY,
+        order_type=OrderType.MARKET,
+        quantity=Decimal(10),
+    )
+    assert r.ticker == "AAPL"
+    assert r.limit_price is None and r.stop_price is None
+
+
+def test_order_confirmation_defaults():
+    c = OrderConfirmation(order_id="1", status=OrderStatus.SUBMITTED)
+    assert c.broker_order_id is None and c.reject_reason is None
+    assert c.filled_quantity == Decimal(0)

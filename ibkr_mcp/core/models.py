@@ -75,3 +75,41 @@ class AccountInfo:
     buying_power: float
     positions_value: float
     unrealized_pnl: float
+
+
+class OrderSide(str, Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+
+
+class OrderType(str, Enum):
+    MARKET = "MARKET"
+    LIMIT = "LIMIT"
+    STOP = "STOP"
+    STOP_LIMIT = "STOP_LIMIT"
+
+
+@dataclass
+class OrderRequest:
+    symbol: Symbol
+    side: OrderSide
+    order_type: OrderType
+    quantity: Decimal
+    limit_price: float | None = None
+    stop_price: float | None = None
+    time_in_force: str = "DAY"
+
+    @property
+    def ticker(self) -> str:
+        return self.symbol.code
+
+
+@dataclass
+class OrderConfirmation:
+    order_id: str
+    status: OrderStatus
+    fill_price: float | None = None
+    filled_quantity: Decimal = field(default_factory=lambda: Decimal(0))
+    timestamp: datetime | None = None
+    broker_order_id: str | None = None
+    reject_reason: str | None = None
