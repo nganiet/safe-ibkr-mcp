@@ -33,24 +33,45 @@ async def get_quote(ib, symbol: Symbol, *, delayed: bool = True) -> dict:
             f"No market data for {symbol.code} — not subscribed and no delayed data available."
         )
     return {
-        "ticker": symbol.code, "last": last, "bid": bid, "ask": ask,
-        "close": close, "mark_price": mark,
-        "market_data_type": getattr(t, "marketDataType", None), "delayed": delayed,
+        "ticker": symbol.code,
+        "last": last,
+        "bid": bid,
+        "ask": ask,
+        "close": close,
+        "mark_price": mark,
+        "market_data_type": getattr(t, "marketDataType", None),
+        "delayed": delayed,
     }
 
 
 async def get_historical_bars(
-    ib, symbol: Symbol, *, duration: str = "5 D", bar_size: str = "1 day",
-    what_to_show: str = "TRADES", use_rth: bool = True,
+    ib,
+    symbol: Symbol,
+    *,
+    duration: str = "5 D",
+    bar_size: str = "1 day",
+    what_to_show: str = "TRADES",
+    use_rth: bool = True,
 ) -> list[dict]:
     contract = await qualify(ib, symbol)
     bars = await ib.reqHistoricalDataAsync(
-        contract, endDateTime="", durationStr=duration, barSizeSetting=bar_size,
-        whatToShow=what_to_show, useRTH=use_rth, formatDate=1,
+        contract,
+        endDateTime="",
+        durationStr=duration,
+        barSizeSetting=bar_size,
+        whatToShow=what_to_show,
+        useRTH=use_rth,
+        formatDate=1,
     )
     return [
-        {"date": str(b.date), "open": b.open, "high": b.high, "low": b.low,
-         "close": b.close, "volume": float(b.volume)}
+        {
+            "date": str(b.date),
+            "open": b.open,
+            "high": b.high,
+            "low": b.low,
+            "close": b.close,
+            "volume": float(b.volume),
+        }
         for b in bars
     ]
 
@@ -62,7 +83,9 @@ async def get_option_chain(ib, symbol: Symbol) -> dict:
         raise MarketDataNotEntitled(f"No option chain available for {symbol.code}.")
     chosen = next((p for p in params if p.exchange == "SMART"), params[0])
     return {
-        "ticker": symbol.code, "exchange": chosen.exchange,
-        "expirations": sorted(chosen.expirations), "strikes": sorted(chosen.strikes),
+        "ticker": symbol.code,
+        "exchange": chosen.exchange,
+        "expirations": sorted(chosen.expirations),
+        "strikes": sorted(chosen.strikes),
         "multiplier": chosen.multiplier,
     }
