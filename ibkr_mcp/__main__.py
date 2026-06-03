@@ -1,4 +1,4 @@
-"""Console entrypoint: `ibkr-mcp` / `python -m ibkr_mcp`."""
+"""Console entrypoint: `ibkr-mcp-guarded` / `python -m ibkr_mcp`."""
 
 from ibkr_mcp.core.connection import IBKRConnection
 from ibkr_mcp.mcp.config import Config
