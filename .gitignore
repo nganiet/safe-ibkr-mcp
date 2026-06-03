@@ -24,6 +24,9 @@ state.db
 audit.log
 KILL
 
+# Local design notes (not published with the repo)
+docs/
+
 # OS / editor
 .DS_Store
 .idea/
