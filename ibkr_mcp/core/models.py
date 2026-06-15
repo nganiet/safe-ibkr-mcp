@@ -75,6 +75,13 @@ class AccountInfo:
     buying_power: float
     positions_value: float
     unrealized_pnl: float
+    base_currency: str = ""  # currency the figures above are denominated in (e.g. "CAD")
+
+
+@dataclass
+class CashBalance:
+    currency: str  # "USD", "CAD", … or "BASE" for the consolidated base-currency row
+    amount: float
 
 
 class OrderSide(str, Enum):

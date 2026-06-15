@@ -44,6 +44,11 @@ def build_server(conn: IBKRConnection, config: Config | None = None) -> FastMCP:
         return await tools_read.positions(conn)
 
     @app.tool()
+    async def get_cash_balances() -> list:
+        """Cash per currency (e.g. USD, CAD) plus the consolidated BASE row. Surfaces a multi-currency split that get_account_summary (base-currency only) hides — e.g. a CAD-base account holding USD stock."""
+        return await tools_read.cash_balances(conn)
+
+    @app.tool()
     async def get_open_orders() -> list:
         """Currently open orders with status and fill progress."""
         return await tools_read.open_orders(conn)

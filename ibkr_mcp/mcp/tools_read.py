@@ -5,7 +5,7 @@ Takes an IBKRConnection. server.py wraps these in @app.tool() decorators.
 
 from datetime import datetime, timezone
 
-from ibkr_mcp.core.account import get_account_summary, get_positions
+from ibkr_mcp.core.account import get_account_summary, get_cash_balances, get_positions
 from ibkr_mcp.core.connection import IBKRConnection
 from ibkr_mcp.core.market_data import get_historical_bars, get_option_chain, get_quote
 from ibkr_mcp.core.models import OrderUpdate, Symbol
@@ -24,13 +24,32 @@ async def health(conn: IBKRConnection) -> dict:
 async def account_summary(conn: IBKRConnection) -> dict:
     await conn.ensure_connected()
     acct = await get_account_summary(conn.ib)
-    return {
+    out = {
         "total_value": acct.total_value,
         "cash": acct.cash,
         "buying_power": acct.buying_power,
         "positions_value": acct.positions_value,
         "unrealized_pnl": acct.unrealized_pnl,
+        "base_currency": acct.base_currency,
     }
+    # Best-effort multi-currency split. The figures above are in base_currency, so a
+    # CAD-base account holding USD stock shows the USD value rolled into positions_value
+    # at the FX rate — the per-currency cash makes that explicit. A ledger hiccup must
+    # never break the core summary, hence the guarded fetch.
+    try:
+        balances = await get_cash_balances(conn.ib)
+    except Exception:
+        balances = []
+    by_ccy = {b.currency: b.amount for b in balances if b.currency != "BASE"}
+    if by_ccy:
+        out["cash_by_currency"] = by_ccy
+        out["multi_currency"] = sum(1 for amt in by_ccy.values() if amt) > 1
+    return out
+
+
+async def cash_balances(conn) -> list[dict]:
+    await conn.ensure_connected()
+    return [{"currency": c.currency, "cash": c.amount} for c in await get_cash_balances(conn.ib)]
 
 
 def _update_to_dict(u: OrderUpdate) -> dict:

@@ -86,3 +86,72 @@ async def test_get_positions_maps_shares_and_cost():
 
 async def test_get_positions_empty():
     assert await get_positions(_FakePosIB([])) == []
+
+
+class _CashRow:
+    def __init__(self, tag, value, currency):
+        self.tag = tag
+        self.value = value
+        self.currency = currency
+
+
+class _FakeCashIB:
+    def __init__(self, values, *, accounts=("DU123",)):
+        self._values = values
+        self._accounts = list(accounts)
+        self.subscribed = False
+
+    def accountValues(self):
+        return self._values
+
+    def managedAccounts(self):
+        return self._accounts
+
+    async def reqAccountUpdatesAsync(self, account):
+        self.subscribed = True
+
+
+async def test_cash_balances_maps_per_currency():
+    from ibkr_mcp.core.account import get_cash_balances
+
+    ib = _FakeCashIB(
+        [
+            _CashRow("CashBalance", "472.00", "CAD"),
+            _CashRow("CashBalance", "760.99", "USD"),
+            _CashRow("CashBalance", "1536.55", "BASE"),
+            _CashRow("ExchangeRate", "1.3989", "USD"),  # ignored — not CashBalance
+        ]
+    )
+    out = await get_cash_balances(ib)
+    assert {(c.currency, c.amount) for c in out} == {
+        ("CAD", 472.00),
+        ("USD", 760.99),
+        ("BASE", 1536.55),
+    }
+    assert ib.subscribed is False  # ledger already populated → no re-subscribe
+
+
+async def test_cash_balances_subscribes_when_empty():
+    from ibkr_mcp.core.account import get_cash_balances
+
+    class _LazyIB(_FakeCashIB):
+        def accountValues(self):
+            return self._values if self.subscribed else []
+
+    ib = _LazyIB([_CashRow("CashBalance", "100", "USD")])
+    out = await get_cash_balances(ib)
+    assert ib.subscribed is True
+    assert [(c.currency, c.amount) for c in out] == [("USD", 100.0)]
+
+
+async def test_cash_balances_skips_bad_values():
+    from ibkr_mcp.core.account import get_cash_balances
+
+    ib = _FakeCashIB(
+        [
+            _CashRow("CashBalance", "N/A", "USD"),
+            _CashRow("CashBalance", "5", "CAD"),
+        ]
+    )
+    out = await get_cash_balances(ib)
+    assert [(c.currency, c.amount) for c in out] == [("CAD", 5.0)]

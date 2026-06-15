@@ -56,6 +56,72 @@ async def test_account_summary_tool_ensures_connection_and_maps():
     assert out["buying_power"] == 0.0
     assert out["positions_value"] == 0.0
     assert out["unrealized_pnl"] == 0.0
+    # base_currency present (empty when the rows carry no currency); the cash split is
+    # absent here because _FakeAcctIB has no accountValues() (guarded fetch degrades).
+    assert out["base_currency"] == ""
+    assert "cash_by_currency" not in out
+
+
+class _CcyRow:
+    def __init__(self, tag, value, currency):
+        self.tag, self.value, self.currency = tag, value, currency
+
+
+class _MultiCcyIB:
+    def __init__(self, summary, values):
+        self._summary, self._values = summary, values
+
+    async def accountSummaryAsync(self, account=""):
+        return self._summary
+
+    def accountValues(self):
+        return self._values
+
+    def managedAccounts(self):
+        return ["DU1"]
+
+    async def reqAccountUpdatesAsync(self, account):  # not reached — values populated
+        pass
+
+
+class _ConnWith:
+    def __init__(self, ib):
+        self.ib = ib
+
+    async def ensure_connected(self):
+        pass
+
+
+async def test_account_summary_surfaces_base_currency_and_multi_currency():
+    ib = _MultiCcyIB(
+        summary=[
+            _CcyRow("NetLiquidation", "4006.06", "CAD"),
+            _CcyRow("TotalCashValue", "1536.55", "CAD"),
+            _CcyRow("GrossPositionValue", "2461.92", "CAD"),
+        ],
+        values=[
+            _CcyRow("CashBalance", "472.00", "CAD"),
+            _CcyRow("CashBalance", "760.99", "USD"),
+            _CcyRow("CashBalance", "1536.55", "BASE"),  # consolidated → excluded
+        ],
+    )
+    out = await tools_read.account_summary(_ConnWith(ib))
+    assert out["base_currency"] == "CAD"
+    assert out["cash_by_currency"] == {"CAD": 472.00, "USD": 760.99}
+    assert out["multi_currency"] is True
+
+
+async def test_account_summary_single_currency_flag_false():
+    ib = _MultiCcyIB(
+        summary=[_CcyRow("NetLiquidation", "2000", "USD")],
+        values=[
+            _CcyRow("CashBalance", "2000", "USD"),
+            _CcyRow("CashBalance", "0", "CAD"),  # zero balance → not counted as multi
+        ],
+    )
+    out = await tools_read.account_summary(_ConnWith(ib))
+    assert out["base_currency"] == "USD"
+    assert out["multi_currency"] is False
 
 
 class _ReadsConn:
