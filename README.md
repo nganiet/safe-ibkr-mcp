@@ -94,7 +94,8 @@ All configuration is via environment variables:
 | Tool | Purpose |
 |---|---|
 | `ibkr_health` | Connection state: connected, paper vs live, last heartbeat. |
-| `get_account_summary` | Net liquidation, cash, buying power, positions value, unrealized P&L. |
+| `get_account_summary` | Net liquidation, cash, buying power, positions value, unrealized P&L, base currency. |
+| `get_cash_balances` | Cash per currency (e.g. USD, CAD) plus the consolidated BASE row — surfaces a multi-currency split that the base-currency summary hides. |
 | `get_positions` | Open positions (ticker, shares, avg cost). |
 | `get_open_orders` | Currently open orders with status and fill progress. |
 | `get_order_status` | Status of a single open order by order id / perm id. |
